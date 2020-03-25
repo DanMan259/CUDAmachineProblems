@@ -1,9 +1,15 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
+# Blend for Visual Studio 14
 VisualStudioVersion = 14.0.24720.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "question1", "question1\question1.vcxproj", "{0F49DB1C-74FE-4386-88AB-CD3070147231}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{6734C2E2-9406-479E-8627-8E02C1E7AAD1}"
+	ProjectSection(SolutionItems) = preProject
+		question1\helper_cuda.h = question1\helper_cuda.h
+		question1\helper_string.h = question1\helper_string.h
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
