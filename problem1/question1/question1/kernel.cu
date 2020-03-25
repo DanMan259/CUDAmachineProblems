@@ -15,7 +15,7 @@ void printDeviceProp(int devIdx){
 	printf("----------------------------------------------\n");
 	printf("Device %d: %s\n", devIdx, devInfo.name);
 	printf("\tClock Rate: %d kHz\n", devInfo.clockRate);
-	printf("\tStreaming Multiprocessors: %d\n", devInfo.multiProcessorCount)
+	printf("\tStreaming Multiprocessors: %d\n", devInfo.multiProcessorCount);
 	printf("\tNumber of Cores: %d\n", (_ConvertSMVer2Cores(devInfo.major, devInfo.minor)*devInfo.multiProcessorCount));
 	printf("\tWarp Size: %d\n", devInfo.warpSize);
 	printf("\tAmount of Global Memory: %zu\n", devInfo.totalGlobalMem);
@@ -45,6 +45,6 @@ int main(void){
 		printDeviceProp(i);
 	}
 	
-	return 0
+	return 0;
 }
 
