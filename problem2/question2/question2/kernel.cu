@@ -1,3 +1,7 @@
+/*
+	Name: Daniyal Manair
+	Student Number: 20064993
+*/
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
@@ -9,10 +13,10 @@
 #include <map>
 
 __global__ void sumMatrixGPU(float* A, float* B, float* C, const int N) {
-	unsigned int ix = blockIdx.x * blockDim.x + threadIdx.x;
-	unsigned int iy = blockIdx.y * blockDim.y + threadIdx.y;
-	unsigned int idx = iy * N + ix;
-	if (ix < N && iy < N){
+	unsigned int col = blockIdx.x * blockDim.x + threadIdx.x;
+	unsigned int row = blockIdx.y * blockDim.y + threadIdx.y;
+	unsigned int idx = row * N + col;
+	if (row < N && col < N){
 		C[idx] = A[idx] + B[idx];
 	}
 }
@@ -122,8 +126,8 @@ void computeMatrix(const int N) {
 	checkResult(C_C, C_C1, N);
 	
 	// Test row based parallel Computation
-	dim3 block1(16);
-	dim3 thread1((N + block1.x - 1) / block1.x);
+	dim3 block(16);
+	dim3 thread((N + block.x - 1) / block.x);
 	
 	start = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
@@ -138,8 +142,8 @@ void computeMatrix(const int N) {
 	checkResult(C_C, C_C1, N);
 
 	// Test Complete parallel Computation
-	dim3 block2(16);
-	dim3 thread2((N + block2.x - 1) / block2.x);
+	dim3 block(16);
+	dim3 thread((N + block.x - 1) / block.x);
 	
 	// Test column based parallel Computation
 	start = std::chrono::high_resolution_clock::now();
