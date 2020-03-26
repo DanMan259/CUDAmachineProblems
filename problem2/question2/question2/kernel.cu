@@ -126,8 +126,8 @@ void computeMatrix(const int N) {
 	checkResult(C_C, C_C1, N);
 	
 	// Test row based parallel Computation
-	dim3 block(16);
-	dim3 thread((N + block.x - 1) / block.x);
+	dim3 block1(16);
+	dim3 thread1((N + block1.x - 1) / block1.x);
 	
 	start = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
@@ -142,8 +142,8 @@ void computeMatrix(const int N) {
 	checkResult(C_C, C_C1, N);
 
 	// Test Complete parallel Computation
-	dim3 block(16);
-	dim3 thread((N + block.x - 1) / block.x);
+	dim3 block2(16);
+	dim3 thread2((N + block2.x - 1) / block2.x);
 	
 	// Test column based parallel Computation
 	start = std::chrono::high_resolution_clock::now();

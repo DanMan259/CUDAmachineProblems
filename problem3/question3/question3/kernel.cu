@@ -17,8 +17,9 @@ __global__ void MatrixMulGPU(float* A, float* B, float* C, const int N) {
 	unsigned int row = blockIdx.y * blockDim.y + threadIdx.y;
 	unsigned int idx = row * N + col;
 	if (row < N && col < N){
+		C[idx] = 0.0;
 		for (int i = 0; i < N; i++)
-			C[row * N + col] += A[row * N + i] * B[i * N + col];
+			C[idx] += A[row * N + i] * B[i * N + col];
 	}
 }
 
@@ -26,6 +27,7 @@ __global__ void MatrixMulGPUperRow(float* A, float* B, float* C, const int N) {
 	int row = blockIdx.x * blockDim.x + threadIdx.x;
 	if (row < N){
 		for (int i = 0; i < N; i++){
+			C[row * N + i] = 0.0;
 			for (int j = 0; j < N; j++)
 				C[row * N + i] += A[row * N + j] * B[j * N + i];
 		}
@@ -36,6 +38,7 @@ __global__ void MatrixMulGPUperCol(float* A, float* B, float* C, const int N) {
 	int col = blockIdx.x * blockDim.x + threadIdx.x;
 	if (col < N){
 		for (int i = 0; i < N; i++){
+			C[i * N + col] = 0.0;
 			for (int j = 0; j < N; j++)
 				C[i * N + col] += A[i * N + j] * B[j * N + col];
 		}
@@ -50,9 +53,8 @@ void initialData(float* matrix, const int N){
 void MatrixMulCPU(float* A, float* B, float* C, const int N){
 	for (int i = 0; i < N; i++) {
 		for (int j = 0; j < N; j++) {
-			for (int p = 0; p < N; p++) {
-				C[i * N + j] += A[i * N + p] * B[p * N + j];
-			}
+			for (int k = 0; k < N; k++) 
+				C[i * N + j] += A[i * N + k] * B[k * N + j];
 		}
 	}
 }
@@ -96,8 +98,8 @@ void computeMatrix(const int N, const int blockSize) {
 	// Set with random data
 	initialData(C_A, N);
 	initialData(C_B, N);
-	memset(C_C, 0, N);
-	memset(C_C1, 0, N);
+	memset(C_C, 0.0, size);
+	memset(C_C1, 0.0, size);
 
 	// Initialize GPU variables
 	float* G_A, *G_B, *G_C, *G_C1, *G_C2;
@@ -136,12 +138,12 @@ void computeMatrix(const int N, const int blockSize) {
 	checkResult(C_C, C_C1, N);
 	
 	// Test row based parallel Computation
-	dim3 block(blockSize);
-	dim3 thread((N + block.x - 1) / block.x);
+	dim3 block1(blockSize);
+	dim3 thread1((N + block1.x - 1) / block1.x);
 	
 	start = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
-	MatrixMulGPUperRow <<<thread1, block1 >>> (G_A, G_B, G_C1, N);
+	MatrixMulGPUperRow <<<thread1, block1>>> (G_A, G_B, G_C1, N);
 	cudaDeviceSynchronize();
 	end = std::chrono::high_resolution_clock::now();
 	timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
@@ -152,13 +154,13 @@ void computeMatrix(const int N, const int blockSize) {
 	checkResult(C_C, C_C1, N);
 
 	// Test Complete parallel Computation
-	dim3 block(blockSize);
-	dim3 thread((N + block.x - 1) / block.x);
+	dim3 block2(blockSize);
+	dim3 thread2((N + block2.x - 1) / block2.x);
 	
 	// Test column based parallel Computation
 	start = std::chrono::high_resolution_clock::now();
 	cudaDeviceSynchronize();
-	MatrixMulGPUperCol <<<thread2, block2 >>> (G_A, G_B, G_C2, N);
+	MatrixMulGPUperCol <<<thread2, block2>>> (G_A, G_B, G_C2, N);
 	cudaDeviceSynchronize();
 	end = std::chrono::high_resolution_clock::now();
 	timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
@@ -182,13 +184,14 @@ void computeMatrix(const int N, const int blockSize) {
 }
 
 int main(){
+
 	int matrixWidths [] = {100, 200, 500, 1000, 1500, 5000};
 	int blockSizes [] = {2, 4, 10, 20, 25};
-	for (int i = 0; i < 6; i++{
-		for (int j = 0; i < 5; j++){
-			computeMatrix(matrixWidths[i], blockSize[j]);
-		}
+	for (int i = 0; i < 6; i++){
+		for (int j = 0; j < 5; j++)
+			computeMatrix(matrixWidths[i], blockSizes[j]);
 	}
 	printf("------------------------------------------------------------------------\n\n");
-    return 0;
+    
+	return 0;
 }
