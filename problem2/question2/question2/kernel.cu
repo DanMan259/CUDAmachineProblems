@@ -1,121 +1,165 @@
-
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 
+#include <vector>
 #include <stdio.h>
+#include <random>
+#include <algorithm>
+#include <chrono>
+#include <map>
 
-cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size);
-
-__global__ void addKernel(int *c, const int *a, const int *b)
-{
-    int i = threadIdx.x;
-    c[i] = a[i] + b[i];
+__global__ void sumMatrixGPU(float* A, float* B, float* C, const int N) {
+	unsigned int ix = blockIdx.x * blockDim.x + threadIdx.x;
+	unsigned int iy = blockIdx.y * blockDim.y + threadIdx.y;
+	unsigned int idx = iy * N + ix;
+	if (ix < N && iy < N){
+		C[idx] = A[idx] + B[idx];
+	}
 }
 
-int main()
-{
-    const int arraySize = 5;
-    const int a[arraySize] = { 1, 2, 3, 4, 5 };
-    const int b[arraySize] = { 10, 20, 30, 40, 50 };
-    int c[arraySize] = { 0 };
+__global__ void sumMatrixGPUperRow(float* A, float* B, float* C, const int N) {
+	int row = blockIdx.x * blockDim.x + threadIdx.x;
+	if (row < N){
+		for (int i = 0; i < N; i++)
+			C[row * N + i] = A[row * N + i] + B[row * N + i];
+	}
+}
 
-    // Add vectors in parallel.
-    cudaError_t cudaStatus = addWithCuda(c, a, b, arraySize);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "addWithCuda failed!");
-        return 1;
-    }
+__global__ void sumMatrixGPUperCol(float* A, float* B, float* C, const int N) {
+	int col = blockIdx.x * blockDim.x + threadIdx.x;
+	if (col < N){
+		for (int i = 0; i < N; i++)
+			C[i * N + col] = A[i * N + col] + B[i * N + col];
+	}
+}
 
-    printf("{1,2,3,4,5} + {10,20,30,40,50} = {%d,%d,%d,%d,%d}\n",
-        c[0], c[1], c[2], c[3], c[4]);
+void initialData(float* matrix, const int N){
+	for (int i = 0; i < (N*N); i++)
+		matrix[i] = (float)(rand() & 0xFF) / 10.0f;
+}
 
-    // cudaDeviceReset must be called before exiting in order for profiling and
-    // tracing tools such as Nsight and Visual Profiler to show complete traces.
-    cudaStatus = cudaDeviceReset();
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaDeviceReset failed!");
-        return 1;
-    }
+void sumMatrixCPU(float* A, float* B, float* C, const int N){
+	for (int i = 0; i < (N*N); i++)
+		C[i] = A[i] + B[i];
+}
 
+void checkResult(float* hostRef, float* gpuRef, const int N) {
+	double epsilon = 1.0E-8;
+	for (int i = 0; i < (N*N); i++){
+		if (abs(hostRef[i] - gpuRef[i]) > epsilon){
+			printf("host %f gpu %f ", hostRef[i], gpuRef[i]);
+			printf("Arrays do not match.\n\n");
+			break;
+		}
+	}
+	printf("Test PASSED\n\n");
+}
+
+void computeMatrix(int N) {
+	float* C_A, *C_B, *C_C, *C_C1;
+	size_t size = N * N * sizeof(float);
+	
+	C_A = (float*)malloc(size);
+	C_B = (float*)malloc(size);
+	C_C = (float*)malloc(size);
+	C_C1 = (float*)malloc(size);
+	
+	initialData(C_A, N);
+	initialData(C_B, N);
+	memset(C_C, 0, N);
+	memset(C_C1, 0, N);
+	
+	auto start = std::chrono::higC_Cesolution_clock::now();
+	sumMatrixCPU(C_A, C_B, C_C, N);
+	auto end = std::chrono::higC_Cesolution_clock::now();
+	auto timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+	printf("The CPU took %d to perform the computation.\n\n", timeElapse);
+	
+	float* G_A, *G_B, *G_C, *G_C1, *G_C2;
+	
+	cudaMalloc((void**)&G_A, size);
+	cudaMalloc((void**)&G_B, size);
+	cudaMalloc((void**)&G_C, size);
+	cudaMalloc((void**)&G_C1, size);
+	cudaMalloc((void**)&G_C2, size);
+	
+	cudaMemcpy(G_A, C_A, size, cudaMemcpyHostToDevice);
+    cudaMemcpy(G_B, C_B, size, cudaMemcpyHostToDevice);
+	
+	dim3 block(16, 16);
+	dim3 thread((N + block.x - 1) / block.x, (N + block.y - 1) / block.y);
+	
+	start = std::chrono::higC_Cesolution_clock::now();
+	cudaDeviceSynchronize();
+	sumMatrixGPU <<<thread, block >>> (G_A, G_B, G_C, N, N);
+	cudaDeviceSynchronize();
+	end = std::chrono::higC_Cesolution_clock::now();
+	timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+	printf("The GPU took %d to perform the computation with one thread per element.\n\n", timeElapse);
+	
+	cudaMemcpy(C_C1, G_C, size, cudaMemcpyDeviceToHost);
+	checkResult(C_C, C_C1, N * N);
+	
+	
+	dim3 block1(16);
+	dim3 thread1((N + block1.x - 1) / block1.x);
+	
+	start = std::chrono::higC_Cesolution_clock::now();
+	cudaDeviceSynchronize();
+	sumMatrixGPUperRow <<<thread1, block1 >>> (G_A, G_B, G_C1, N);
+	cudaDeviceSynchronize();
+	end = std::chrono::higC_Cesolution_clock::now();
+	timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+	printf("The GPU took %d to perform the computation with one thread per Row.\n\n", timeElapse);
+	
+	cudaMemcpy(C_C1, G_C1, size, cudaMemcpyDeviceToHost);
+	checkResult(C_C, C_C1, N * N);
+	
+	dim3 block2(16);
+	dim3 thread2((N + block2.x - 1) / block2.x);
+	
+	
+	start = std::chrono::higC_Cesolution_clock::now();
+	cudaDeviceSynchronize();
+	sumMatrixGPUperCol <<<thread2, block2 >>> (G_A, G_B, G_C2, N);
+	cudaDeviceSynchronize();
+	end = std::chrono::higC_Cesolution_clock::now();
+	timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+	printf("The GPU took %d to perform the computation with one thread per Column.\n\n", timeElapse);
+	
+	cudaMemcpy(C_C1, G_C2, size, cudaMemcpyDeviceToHost);
+	checkResult(C_C, C_C1, N * N);
+	
+	
+	cudaFree(G_A);
+	cudaFree(G_B);
+	cudaFree(G_C);
+	cudaFree(G_C1);
+	cudaFree(G_C2);
+	free(C_A);
+	free(C_B);
+	free(C_C);
+	free(C_C1);
+	cudaDeviceReset();
+}
+
+int main(){
+    printf("100x100 matrix addition.\n");
+	computeMatrix(100);
+	
+	//printf("200x200 matrix addition.\n");
+	//computeMatrix(200);
+	
+	//printf("500x500 matrix addition.\n");
+	//computeMatrix(500);
+	
+	//printf("1000x1000 matrix addition.\n");
+	//computeMatrix(1000);
+	
+	//printf("1500x1500 matrix addition.\n");
+	//computeMatrix(1500);
+	
+	//printf("5000x5000 matrix addition.\n");
+	//computeMatrix(14200);
     return 0;
-}
-
-// Helper function for using CUDA to add vectors in parallel.
-cudaError_t addWithCuda(int *c, const int *a, const int *b, unsigned int size)
-{
-    int *dev_a = 0;
-    int *dev_b = 0;
-    int *dev_c = 0;
-    cudaError_t cudaStatus;
-
-    // Choose which GPU to run on, change this on a multi-GPU system.
-    cudaStatus = cudaSetDevice(0);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaSetDevice failed!  Do you have a CUDA-capable GPU installed?");
-        goto Error;
-    }
-
-    // Allocate GPU buffers for three vectors (two input, one output)    .
-    cudaStatus = cudaMalloc((void**)&dev_c, size * sizeof(int));
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMalloc failed!");
-        goto Error;
-    }
-
-    cudaStatus = cudaMalloc((void**)&dev_a, size * sizeof(int));
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMalloc failed!");
-        goto Error;
-    }
-
-    cudaStatus = cudaMalloc((void**)&dev_b, size * sizeof(int));
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMalloc failed!");
-        goto Error;
-    }
-
-    // Copy input vectors from host memory to GPU buffers.
-    cudaStatus = cudaMemcpy(dev_a, a, size * sizeof(int), cudaMemcpyHostToDevice);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMemcpy failed!");
-        goto Error;
-    }
-
-    cudaStatus = cudaMemcpy(dev_b, b, size * sizeof(int), cudaMemcpyHostToDevice);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMemcpy failed!");
-        goto Error;
-    }
-
-    // Launch a kernel on the GPU with one thread for each element.
-    addKernel<<<1, size>>>(dev_c, dev_a, dev_b);
-
-    // Check for any errors launching the kernel
-    cudaStatus = cudaGetLastError();
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "addKernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
-        goto Error;
-    }
-    
-    // cudaDeviceSynchronize waits for the kernel to finish, and returns
-    // any errors encountered during the launch.
-    cudaStatus = cudaDeviceSynchronize();
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaDeviceSynchronize returned error code %d after launching addKernel!\n", cudaStatus);
-        goto Error;
-    }
-
-    // Copy output vector from GPU buffer to host memory.
-    cudaStatus = cudaMemcpy(c, dev_c, size * sizeof(int), cudaMemcpyDeviceToHost);
-    if (cudaStatus != cudaSuccess) {
-        fprintf(stderr, "cudaMemcpy failed!");
-        goto Error;
-    }
-
-Error:
-    cudaFree(dev_c);
-    cudaFree(dev_a);
-    cudaFree(dev_b);
-    
-    return cudaStatus;
 }
