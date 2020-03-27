@@ -23,24 +23,14 @@ __global__ void MatrixMulGPU(float* A, float* B, float* C, const int N) {
 	}
 }
 
-__global__ void MatrixMulGPUperRow(float* A, float* B, float* C, const int N) {
-	int row = blockIdx.x * blockDim.x + threadIdx.x;
-	if (row < N){
-		for (int i = 0; i < N; i++){
-			C[row * N + i] = 0.0;
-			for (int j = 0; j < N; j++)
-				C[row * N + i] += A[row * N + j] * B[j * N + i];
-		}
-	}
-}
-
-__global__ void MatrixMulGPUperCol(float* A, float* B, float* C, const int N) {
-	int col = blockIdx.x * blockDim.x + threadIdx.x;
-	if (col < N){
-		for (int i = 0; i < N; i++){
-			C[i * N + col] = 0.0;
-			for (int j = 0; j < N; j++)
-				C[i * N + col] += A[i * N + j] * B[j * N + col];
+__global__ void MatrixMulGPUSingle(float* A, float* B, float* C, const int N) {
+	for (int row = 0; row < sDim; row++) {
+		for (int col = 0; col < sDim; col++) {
+			if (row < sDim && col < sDim) {
+				C[row * sDim + col] = 0.0;
+				for (int k = 0; k < sDim; k++)
+					C[row * sDim + col] += A[row * sDim + k] * B[k * sDim + col];
+			}
 		}
 	}
 }
@@ -80,117 +70,108 @@ void printArr(float* matrix, const int N) {
 
 }
 
-void computeMatrix(const int N, const int blockSize) {
+float GPUtest(float* C_A, float* C_B, float* CPUResult, const int blockSize, const int N){
+	// Initialize variables
+	cudaEvent_t gStart, gEnd;
+	float timeDuration;
+	float *G_A, *G_B, *G_C, *GPUResult;
+	size_t size = N * N * sizeof(float);
+	
+	// Initialize GPU variables
+	cudaMalloc((void**)&G_A, size);
+	cudaMalloc((void**)&G_B, size);
+	cudaMalloc((void**)&G_C, size);
+	memset(GPUResult, 0.0, size);
+	cudaEventCreate(&gStart);
+    cudaEventCreate(&gEnd);
+	
+	// Copy over the data
+	cudaMemcpy(G_A, C_A, size, cudaMemcpyHostToDevice);
+	cudaMemcpy(G_B, C_B, size, cudaMemcpyHostToDevice);
+	
+	// Create block
+	int numBlocks = sDim / blockSize;
+	if (N % blockSize) numBlocks++;
+	dim3 block(blockWidth, blockWidth, 1);
+	dim3 grid(numBlocks, numBlocks, 1);
+	
+	// Perform GPU comparison
+	cudaEventRecord(gStart);
+	if (blockSize == 0)
+		MatrixMulGPUSingle <<<1, 1>>> (G_A, G_B, G_C, N);
+	else
+		MatrixMulGPU <<<grid, block>>> (G_A, G_B, G_C, N);
+	cudaEventRecord(gEnd);
+	cudaEventSynchronize(gEnd);
+	cudaEventElapsedTime(&timeDuration, gStart, gEnd);
+	
+	cudaMemcpy(GPUResult, G_C, size, cudaMemcpyDeviceToHost);
+	checkResult(CPUResult, GPUResult, N);
+	
+	cudaFree(G_A);
+	cudaFree(G_B);
+	cudaFree(G_C);
+	free(GPUResult);
+	return (timeDuration/1000.0);
+}
+
+void computeMatrix(const int N) {
 	// Initial prints
 	printf("------------------------------------------------------------------------\n\n");
-	printf("%dx%d matrix addition with block size %d.\n\n", N, N, blockSize);
+	printf("%dx%d matrix multiplication.\n\n", N, N, blockSize);
 
 	// Initialize Host variables
-	float* C_A, *C_B, *C_C, *C_C1;
+	float *C_A, *C_B, *C_C;
 	size_t size = N * N * sizeof(float);
+	FILE *fp;
 	
 	// Initialize space
 	C_A = (float*)malloc(size);
 	C_B = (float*)malloc(size);
 	C_C = (float*)malloc(size);
-	C_C1 = (float*)malloc(size);
-
+	fp=fopen("machineProblem3.csv","a");
+	
 	// Set with random data
 	initialData(C_A, N);
 	initialData(C_B, N);
 	memset(C_C, 0.0, size);
-	memset(C_C1, 0.0, size);
-
-	// Initialize GPU variables
-	float* G_A, *G_B, *G_C, *G_C1, *G_C2;
-	cudaMalloc((void**)&G_A, size);
-	cudaMalloc((void**)&G_B, size);
-	cudaMalloc((void**)&G_C, size);
-	cudaMalloc((void**)&G_C1, size);
-	cudaMalloc((void**)&G_C2, size);
-	
-	// Copy over the data
-	cudaMemcpy(G_A, C_A, size, cudaMemcpyHostToDevice);
-	cudaMemcpy(G_B, C_B, size, cudaMemcpyHostToDevice);
 
 	// Serial Test CPU
-	auto start = std::chrono::high_resolution_clock::now();
+	auto cStart = std::chrono::high_resolution_clock::now();
 	MatrixMulCPU(C_A, C_B, C_C, N);
-	auto end = std::chrono::high_resolution_clock::now();
-	auto timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+	auto cEnd = std::chrono::high_resolution_clock::now();
+	auto timeElapse = std::chrono::duration_cast<std::chrono::seconds>(cEnd - cStart).count();
 	printf("The CPU took %d to perform the computation.\n\n", timeElapse);
-	
+	fprintf(fp,"%d,CPU,%d,%d\n",N, blockSize,timeElapse);
 	
 	// Test Complete parallel Computation
-	dim3 block(blockSize, blockSize);
-	dim3 thread((N + block.x - 1) / block.x, (N + block.y - 1) / block.y);
+	int blockSizes [] = {0, 2, 4, 10, 20, 25};
+	float timeDuration;
 	
-	start = std::chrono::high_resolution_clock::now();
-	cudaDeviceSynchronize();
-	MatrixMulGPU <<<thread, block>>> (G_A, G_B, G_C, N);
-	cudaDeviceSynchronize();
-	end = std::chrono::high_resolution_clock::now();
-	timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-	printf("The GPU took %d to perform the computation with one thread per element.\n", timeElapse);
-	
-	// Copy over the result and compare
-	cudaMemcpy(C_C1, G_C, size, cudaMemcpyDeviceToHost);
-	checkResult(C_C, C_C1, N);
-	
-	// Test row based parallel Computation
-	dim3 block1(blockSize);
-	dim3 thread1((N + block1.x - 1) / block1.x);
-	
-	start = std::chrono::high_resolution_clock::now();
-	cudaDeviceSynchronize();
-	MatrixMulGPUperRow <<<thread1, block1>>> (G_A, G_B, G_C1, N);
-	cudaDeviceSynchronize();
-	end = std::chrono::high_resolution_clock::now();
-	timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-	printf("The GPU took %d to perform the computation with one thread per Row.\n", timeElapse);
-
-	// Copy over the result and compare
-	cudaMemcpy(C_C1, G_C1, size, cudaMemcpyDeviceToHost);
-	checkResult(C_C, C_C1, N);
-
-	// Test Complete parallel Computation
-	dim3 block2(blockSize);
-	dim3 thread2((N + block2.x - 1) / block2.x);
-	
-	// Test column based parallel Computation
-	start = std::chrono::high_resolution_clock::now();
-	cudaDeviceSynchronize();
-	MatrixMulGPUperCol <<<thread2, block2>>> (G_A, G_B, G_C2, N);
-	cudaDeviceSynchronize();
-	end = std::chrono::high_resolution_clock::now();
-	timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-	printf("The GPU took %d to perform the computation with one thread per Column.\n", timeElapse);
-	
-	// Copy over the result and compare
-	cudaMemcpy(C_C1, G_C2, size, cudaMemcpyDeviceToHost);
-	checkResult(C_C, C_C1, N);
+	for (int i = 0; i < 6; j++){
+		timeDuration = GPUtest(C_A, C_B, C_C, blockSizes[i]);
+		printf("The GPU took %f to perform the computation with block size %d.\n", timeDuration, blockSizes[i]);
+		fprintf(fp,"%d,GPU,%d,%f\n",N,blockSizes[i],timeDuration);
+	}
 	
 	// Free all the memory
-	cudaFree(G_A);
-	cudaFree(G_B);
-	cudaFree(G_C);
-	cudaFree(G_C1);
-	cudaFree(G_C2);
 	free(C_A);
 	free(C_B);
 	free(C_C);
-	free(C_C1);
+	fclose(fp);
 	cudaDeviceReset();
 }
 
 int main(){
-
+	FILE *fp;
+	fp=fopen("machineProblem3.csv","w");
+	fprintf(fp,"matrixSize,processor,blockSize,time\n");
+	fclose(fp);
 	int matrixWidths [] = {100, 200, 500, 1000, 1500, 5000};
-	int blockSizes [] = {2, 4, 10, 20, 25};
+	
 	for (int i = 0; i < 6; i++){
-		for (int j = 0; j < 5; j++)
-			computeMatrix(matrixWidths[i], blockSizes[j]);
-	}
+		computeMatrix(matrixWidths[i]);
+
 	printf("------------------------------------------------------------------------\n\n");
     
 	return 0;

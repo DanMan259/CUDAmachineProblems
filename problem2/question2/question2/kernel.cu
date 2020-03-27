@@ -76,13 +76,18 @@ void computeMatrix(const int N) {
 	// Initialize Host variables
 	float* C_A, *C_B, *C_C, *C_C1;
 	size_t size = N * N * sizeof(float);
+	cudaEvent_t gStart, gEnd;
+	FILE *fp;
 	
 	// Initialize space
 	C_A = (float*)malloc(size);
 	C_B = (float*)malloc(size);
 	C_C = (float*)malloc(size);
 	C_C1 = (float*)malloc(size);
-
+	fp=fopen("machineProblem2.csv","a");
+	cudaEventCreate(&gStart);
+    cudaEventCreate(&gEnd);
+	
 	// Set with random data
 	initialData(C_A, N);
 	initialData(C_B, N);
@@ -107,19 +112,19 @@ void computeMatrix(const int N) {
 	auto end = std::chrono::high_resolution_clock::now();
 	auto timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 	printf("The CPU took %d to perform the computation.\n\n", timeElapse);
-	
+	fprintf(fp,"%d,CPU,ELEMENT,0,%d\n",N,timeElapse);
 	
 	// Test Complete parallel Computation
 	dim3 block(16, 16);
 	dim3 thread((N + block.x - 1) / block.x, (N + block.y - 1) / block.y);
 	
-	start = std::chrono::high_resolution_clock::now();
-	cudaDeviceSynchronize();
+	cudaEventRecord(gStart);
 	sumMatrixGPU <<<thread, block >>> (G_A, G_B, G_C, N);
-	cudaDeviceSynchronize();
-	end = std::chrono::high_resolution_clock::now();
-	timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-	printf("The GPU took %d to perform the computation with one thread per element.\n", timeElapse);
+	cudaEventRecord(gEnd);
+	cudaEventSynchronize(gEnd);
+	cudaEventElapsedTime(&timeDuration, gStart, gEnd);
+	printf("The GPU took %f to perform the computation with one thread per element.\n", timeDuration/1000.0);
+	fprintf(fp,"%d,GPU,ELEMENT,16,%f\n",N,timeDuration/1000.0);
 	
 	// Copy over the result and compare
 	cudaMemcpy(C_C1, G_C, size, cudaMemcpyDeviceToHost);
@@ -129,13 +134,13 @@ void computeMatrix(const int N) {
 	dim3 block1(16);
 	dim3 thread1((N + block1.x - 1) / block1.x);
 	
-	start = std::chrono::high_resolution_clock::now();
-	cudaDeviceSynchronize();
+	cudaEventRecord(gStart);
 	sumMatrixGPUperRow <<<thread1, block1 >>> (G_A, G_B, G_C1, N);
-	cudaDeviceSynchronize();
-	end = std::chrono::high_resolution_clock::now();
-	timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-	printf("The GPU took %d to perform the computation with one thread per Row.\n", timeElapse);
+	cudaEventRecord(gEnd);
+	cudaEventSynchronize(gEnd);
+	cudaEventElapsedTime(&timeDuration, gStart, gEnd);
+	printf("The GPU took %f to perform the computation with one thread per Row.\n", timeDuration/1000.0);
+	fprintf(fp,"%d,GPU,ROW,16,%f\n",N,timeDuration/1000.0);
 
 	// Copy over the result and compare
 	cudaMemcpy(C_C1, G_C1, size, cudaMemcpyDeviceToHost);
@@ -146,13 +151,13 @@ void computeMatrix(const int N) {
 	dim3 thread2((N + block2.x - 1) / block2.x);
 	
 	// Test column based parallel Computation
-	start = std::chrono::high_resolution_clock::now();
-	cudaDeviceSynchronize();
+	cudaEventRecord(gStart);
 	sumMatrixGPUperCol <<<thread2, block2 >>> (G_A, G_B, G_C2, N);
-	cudaDeviceSynchronize();
-	end = std::chrono::high_resolution_clock::now();
-	timeElapse = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-	printf("The GPU took %d to perform the computation with one thread per Column.\n", timeElapse);
+	cudaEventRecord(gEnd);
+	cudaEventSynchronize(gEnd);
+	cudaEventElapsedTime(&timeDuration, gStart, gEnd);
+	printf("The GPU took %f to perform the computation with one thread per Column.\n", timeDuration/1000.0);
+	fprintf(fp,"%d,GPU,COL,16,%f\n",N,timeDuration/1000.0);
 	
 	// Copy over the result and compare
 	cudaMemcpy(C_C1, G_C2, size, cudaMemcpyDeviceToHost);
@@ -168,10 +173,15 @@ void computeMatrix(const int N) {
 	free(C_B);
 	free(C_C);
 	free(C_C1);
+	fclose(fp);
 	cudaDeviceReset();
 }
 
 int main(){
+	FILE *fp;
+	fp=fopen("machineProblem2.csv","w");
+	fprintf(fp,"matrixSize,processor,type,blockSize,time\n");
+	fclose(fp);
 	computeMatrix(100);
 	computeMatrix(200);
 	computeMatrix(500);
