@@ -13,8 +13,22 @@
 #include <map>
 
 __global__ void TiledMatrixMulGPU(float* A, float* B, float* C, const int N, const int tileWidth) {
-	__shared__ float t_A [tileWidth][tileWidth];
-	__shared__ float t_B [tileWidth][tileWidth];
+	if (tileWidth == 2){
+		__shared__ float t_A [2][2];
+		__shared__ float t_B [2][2];
+	} else if (tileWidth == 4){
+		__shared__ float t_A [4][4];
+		__shared__ float t_B [4][4];
+	} else if (tileWidth == 10){
+		__shared__ float t_A [10][10];
+		__shared__ float t_B [10][10];
+	} else if (tileWidth == 20){
+		__shared__ float t_A [20][20];
+		__shared__ float t_B [20][20];
+	} if (tileWidth == 25){
+		__shared__ float t_A [25][25];
+		__shared__ float t_B [25][25];
+	} 
 	
 	unsigned int bx = blockIdx.x;
 	unsigned int by = blockIdx.x;
@@ -70,7 +84,7 @@ void printArr(float* matrix, const int size) {
 
 }
 
-void GPUtest(float* C_A, float* C_B, float* CPUResult, const int blockSize, const int N){
+void GPUtest(float* C_A, float* C_B, float* CPUResult, const int tileSize, const int N){
 	// Initialize variables
 	cudaEvent_t gStart, gEnd;
 	float timeDuration;
@@ -93,13 +107,13 @@ void GPUtest(float* C_A, float* C_B, float* CPUResult, const int blockSize, cons
 	// Perform GPU comparison
 
 	// Create block
-	int numBlocks = N / blockSize;
-	if (N % blockSize) numBlocks++;
-	dim3 block(blockSize, blockSize, 1);
+	int numBlocks = N / tileSize;
+	if (N % tileSize) numBlocks++;
+	dim3 block(tileSize, tileSize, 1);
 	dim3 grid(numBlocks, numBlocks, 1);
 
 	cudaEventRecord(gStart);
-	TiledMatrixMulGPU <<<grid, block>>> (G_A, G_B, G_C, N, blockSize); // MIGHT CHANGE EVERYTHING TO TILE SIZE
+	TiledMatrixMulGPU <<<grid, block>>> (G_A, G_B, G_C, N, tileSize); 
 	cudaEventRecord(gEnd);
 	
 	cudaEventSynchronize(gEnd);
@@ -115,8 +129,8 @@ void GPUtest(float* C_A, float* C_B, float* CPUResult, const int blockSize, cons
 	
 	FILE *fp;
 	fp=fopen("machineProblem4.csv","a");
-	printf("The GPU took %f to perform the computation with block size %d.\n", timeDuration, blockSizes[i]);
-	fprintf(fp,"%d,GPU,%d,%f\n",N,blockSize,timeDuration);
+	printf("The GPU took %f to perform the computation with block size %d.\n", timeDuration, tileSize);
+	fprintf(fp,"%d,%d,%f\n",N,tileSize,timeDuration);
 	fclose(fp);	
 
 }
@@ -141,24 +155,13 @@ void computeMatrix(const int N) {
 	memset(C_C, 0.0, size);
 
 	// Serial Test CPU
-	auto cStart = std::chrono::high_resolution_clock::now();
 	MatrixMulCPU(C_A, C_B, C_C, N);
-	auto cEnd = std::chrono::high_resolution_clock::now();
-	auto timeElapse = (std::chrono::duration_cast<std::chrono::microseconds>(cEnd - cStart).count())/1000.0;
-	printf("The CPU took %f to perform the computation.\n\n", timeElapse);
-	
-	// Write to file
-	FILE *fp;
-	fp=fopen("machineProblem4.csv","a");
-	fprintf(fp,"%d,CPU,0,%f\n",N,timeElapse);
-	fclose(fp);
 	
 	// Test Complete parallel Computation
-	int blockSizes [] = {2, 4, 10, 20, 25};
-	float timeDuration;
+	int tileSizes [] = {2, 4, 10, 20, 25};
 	
 	for (int i = 0; i < 5; i++)
-		GPUtest(C_A, C_B, C_C, blockSizes[i], N);
+		GPUtest(C_A, C_B, C_C, tileSizes[i], N);
 	
 	// Free all the memory
 	free(C_A);
@@ -169,10 +172,21 @@ void computeMatrix(const int N) {
 
 // --------------------BONUS-----------------------------
 
-__global__ void TiledMatrixMulGPUBonus(float* A, float* B, float* C, const int M, const int N, const int K, const int tileWidth) {
+#define BONUSTILE_1C 8
+#define BONUSTILE_1R 8
+#define BONUSTILE_2C 14
+#define BONUSTILE_2R 14
 
-	__shared__ float t_A [tileWidth][tileWidth];
-	__shared__ float t_B [tileWidth][tileWidth];
+__global__ void TiledMatrixMulGPUBonus(float* A, float* B, float* C, const int M, const int N, const int K, const int tileCase) {
+	
+	if (tileCase == 1){
+		__shared__ float t_A [BONUSTILE_1R][BONUSTILE_1C];
+		__shared__ float t_B [BONUSTILE_1R][BONUSTILE_1C];
+	} else {
+		__shared__ float t_A [BONUSTILE_2R][BONUSTILE_2C];
+		__shared__ float t_B [BONUSTILE_2R][BONUSTILE_2C];
+	
+	}
 	
 	unsigned int bx = blockIdx.x;
 	unsigned int by = blockIdx.x;
@@ -246,11 +260,20 @@ void computeMatrixBonus(const int M, const int N, const int K) {
 	dim3 thread((int)ceil((K + block.x - 1)) / block.x, (int)ceil((M + block.y - 1) / block.y));
 	
 	// Test different tile sizes
-	TiledMatrixMulGPUBonus <<<grid, block >>> (G_A, G_B, G_C, M, N, K, 8);
+	
+	// Case 1 8x8
+	dim3 block1(BONUSTILE_1R, BONUSTILE_1C);
+	dim3 grid1((int)ceil((K + block.x - 1)) / block.x, (int)ceil((M + block.y - 1) / block.y));
+	
+	TiledMatrixMulGPUBonus <<<grid1, block1>>> (G_A, G_B, G_C, M, N, K, 1);
 	cudaMemcpy(GPUResult, G_C, size, cudaMemcpyDeviceToHost);
 	checkResult(CPUResult, GPUResult, N*N);
 	
-	TiledMatrixMulGPUBonus <<<grid, block >>> (G_A, G_B, G_C, M, N, K, 14);
+	// Case 2 14x14
+	dim3 block2(BONUSTILE_2R, BONUSTILE_2C);
+	dim3 grid2((int)ceil((K + block.x - 1)) / block.x, (int)ceil((M + block.y - 1) / block.y));
+	
+	TiledMatrixMulGPUBonus <<<grid2, block2>>> (G_A, G_B, G_C, M, N, K, 2);
 	cudaMemcpy(GPUResult, G_C, size, cudaMemcpyDeviceToHost);
 	checkResult(CPUResult, GPUResult, N*N);
 	
@@ -272,7 +295,7 @@ void computeMatrixBonus(const int M, const int N, const int K) {
 int main(){
 	FILE *fp;
 	fp=fopen("machineProblem4.csv","w");
-	fprintf(fp,"matrixSize,processor,tileSize,time\n");
+	fprintf(fp,"matrixSize,tileSize,time\n");
 	fclose(fp);
 	int matrixWidths [] = {100, 200, 500, 1000, 1500, 5000};
 	
