@@ -12,118 +12,125 @@
 #include <chrono>
 #include <map>
 
-__global__ void TiledMatrixMulGPU(float* A, float* B, float* C, const int N, const int tileWidth) {
-	if (tileWidth == 2){
-		__shared__ float t_A [2][2];
-		__shared__ float t_B [2][2];
+__global__ void TiledMatrixMulGPU2(float* A, float* B, float* C, const int N) {
+	__shared__ float t_A [2][2];
+	__shared__ float t_B [2][2];
 
-		unsigned int bx = blockIdx.x;
-		unsigned int by = blockIdx.y;
-		unsigned int tx = threadIdx.x;
-		unsigned int ty = threadIdx.y;
-		unsigned int row = by * tileWidth + ty;
-		unsigned int col = bx * tileWidth + tx;
+	unsigned int tileWidth = 2;
+	unsigned int bx = blockIdx.x;
+	unsigned int by = blockIdx.y;
+	unsigned int tx = threadIdx.x;
+	unsigned int ty = threadIdx.y;
+	unsigned int row = by * tileWidth + ty;
+	unsigned int col = bx * tileWidth + tx;
 
-		float cValue = 0.0;
-		for (int i = 0; i < (N / tileWidth); i++) {
-			t_A[ty][tx] = A[row*N + i*tileWidth + tx];
-			t_B[ty][tx] = B[(i*tileWidth + ty)*N + col];
-			__syncthreads();
-			for (int j = 0; j < tileWidth; j++)
-				cValue += t_A[ty][j] * t_B[j][tx];
-			__syncthreads();
-		}
-		C[row*N + col] = cValue;
+	float cValue = 0.0;
+	for (int i = 0; i < (N / tileWidth); i++) {
+		t_A[ty][tx] = A[row*N + i*tileWidth + tx];
+		t_B[ty][tx] = B[(i*tileWidth + ty)*N + col];
+		__syncthreads();
+		for (int j = 0; j < tileWidth; j++)
+			cValue += t_A[ty][j] * t_B[j][tx];
+		__syncthreads();
+	}
+	C[row*N + col] = cValue;
+}
+
+__global__ void TiledMatrixMulGPU4(float* A, float* B, float* C, const int N) {
+	__shared__ float t_A [4][4];
+	__shared__ float t_B [4][4];
+
+	unsigned int tileWidth = 4;
+	unsigned int bx = blockIdx.x;
+	unsigned int by = blockIdx.y;
+	unsigned int tx = threadIdx.x;
+	unsigned int ty = threadIdx.y;
+	unsigned int row = by * tileWidth + ty;
+	unsigned int col = bx * tileWidth + tx;
+
+	float cValue = 0.0;
+	for (int i = 0; i < (N / tileWidth); i++) {
+		t_A[ty][tx] = A[row*N + i*tileWidth + tx];
+		t_B[ty][tx] = B[(i*tileWidth + ty)*N + col];
+		__syncthreads();
+		for (int j = 0; j < tileWidth; j++)
+			cValue += t_A[ty][j] * t_B[j][tx];
+		__syncthreads();
+	}
+	C[row*N + col] = cValue;
+}	
 
 
-	} else if (tileWidth == 4){
-		__shared__ float t_A [4][4];
-		__shared__ float t_B [4][4];
+__global__ void TiledMatrixMulGPU10(float* A, float* B, float* C, const int N) {
+	__shared__ float t_A [10][10];
+	__shared__ float t_B [10][10];
 
-		unsigned int bx = blockIdx.x;
-		unsigned int by = blockIdx.y;
-		unsigned int tx = threadIdx.x;
-		unsigned int ty = threadIdx.y;
-		unsigned int row = by * tileWidth + ty;
-		unsigned int col = bx * tileWidth + tx;
+	unsigned int tileWidth = 10;
+	unsigned int bx = blockIdx.x;
+	unsigned int by = blockIdx.y;
+	unsigned int tx = threadIdx.x;
+	unsigned int ty = threadIdx.y;
+	unsigned int row = by * tileWidth + ty;
+	unsigned int col = bx * tileWidth + tx;
 
-		float cValue = 0.0;
-		for (int i = 0; i < (N / tileWidth); i++) {
-			t_A[ty][tx] = A[row*N + i*tileWidth + tx];
-			t_B[ty][tx] = B[(i*tileWidth + ty)*N + col];
-			__syncthreads();
-			for (int j = 0; j < tileWidth; j++)
-				cValue += t_A[ty][j] * t_B[j][tx];
-			__syncthreads();
-		}
-		C[row*N + col] = cValue;
-	} else if (tileWidth == 10){
-		__shared__ float t_A [10][10];
-		__shared__ float t_B [10][10];
+	float cValue = 0.0;
+	for (int i = 0; i < (N / tileWidth); i++) {
+		t_A[ty][tx] = A[row*N + i*tileWidth + tx];
+		t_B[ty][tx] = B[(i*tileWidth + ty)*N + col];
+		__syncthreads();
+		for (int j = 0; j < tileWidth; j++)
+			cValue += t_A[ty][j] * t_B[j][tx];
+		__syncthreads();
+	}
+	C[row*N + col] = cValue;
+}
 
-		unsigned int bx = blockIdx.x;
-		unsigned int by = blockIdx.y;
-		unsigned int tx = threadIdx.x;
-		unsigned int ty = threadIdx.y;
-		unsigned int row = by * tileWidth + ty;
-		unsigned int col = bx * tileWidth + tx;
+__global__ void TiledMatrixMulGPU20(float* A, float* B, float* C, const int N) {
+	__shared__ float t_A [20][20];
+	__shared__ float t_B [20][20];
 
-		float cValue = 0.0;
-		for (int i = 0; i < (N / tileWidth); i++) {
-			t_A[ty][tx] = A[row*N + i*tileWidth + tx];
-			t_B[ty][tx] = B[(i*tileWidth + ty)*N + col];
-			__syncthreads();
-			for (int j = 0; j < tileWidth; j++)
-				cValue += t_A[ty][j] * t_B[j][tx];
-			__syncthreads();
-		}
-		C[row*N + col] = cValue;
-	} else if (tileWidth == 20){
-		__shared__ float t_A [20][20];
-		__shared__ float t_B [20][20];
+	unsigned int tileWidth = 20;
+	unsigned int bx = blockIdx.x;
+	unsigned int by = blockIdx.y;
+	unsigned int tx = threadIdx.x;
+	unsigned int ty = threadIdx.y;
+	unsigned int row = by * tileWidth + ty;
+	unsigned int col = bx * tileWidth + tx;
 
-		unsigned int bx = blockIdx.x;
-		unsigned int by = blockIdx.y;
-		unsigned int tx = threadIdx.x;
-		unsigned int ty = threadIdx.y;
-		unsigned int row = by * tileWidth + ty;
-		unsigned int col = bx * tileWidth + tx;
+	float cValue = 0.0;
+	for (int i = 0; i < (N / tileWidth); i++) {
+		t_A[ty][tx] = A[row*N + i*tileWidth + tx];
+		t_B[ty][tx] = B[(i*tileWidth + ty)*N + col];
+		__syncthreads();
+		for (int j = 0; j < tileWidth; j++)
+			cValue += t_A[ty][j] * t_B[j][tx];
+		__syncthreads();
+	}
+	C[row*N + col] = cValue;
+}
 
-		float cValue = 0.0;
-		for (int i = 0; i < (N / tileWidth); i++) {
-			t_A[ty][tx] = A[row*N + i*tileWidth + tx];
-			t_B[ty][tx] = B[(i*tileWidth + ty)*N + col];
-			__syncthreads();
-			for (int j = 0; j < tileWidth; j++)
-				cValue += t_A[ty][j] * t_B[j][tx];
-			__syncthreads();
-		}
-		C[row*N + col] = cValue;
-	} else if (tileWidth == 25){
-		__shared__ float t_A [25][25];
-		__shared__ float t_B [25][25];
+__global__ void TiledMatrixMulGPU25(float* A, float* B, float* C, const int N, const int tileWidth) {
+	__shared__ float t_A [25][25];
+	__shared__ float t_B [25][25];
 
-		unsigned int bx = blockIdx.x;
-		unsigned int by = blockIdx.y;
-		unsigned int tx = threadIdx.x;
-		unsigned int ty = threadIdx.y;
+	unsigned int tileWidth = 25;
+	unsigned int bx = blockIdx.x;
+	unsigned int by = blockIdx.y;
+	unsigned int tx = threadIdx.x;
+	unsigned int ty = threadIdx.y;
+	unsigned int row = by * tileWidth + ty;
+	unsigned int col = bx * tileWidth + tx;
 
-		unsigned int row = by * tileWidth + ty;
-		unsigned int col = bx * tileWidth + tx;
-
-		float cValue = 0.0;
-		for (int i = 0; i < (N / tileWidth); i++) {
-			t_A[ty][tx] = A[row*N + i*tileWidth + tx];
-			t_B[ty][tx] = B[(i*tileWidth + ty)*N + col];
-			__syncthreads();
-			for (int j = 0; j < tileWidth; j++)
-				cValue += t_A[ty][j] * t_B[j][tx];
-			__syncthreads();
-		}
-		C[row*N + col] = cValue;
-	} 
-	
-	
+	float cValue = 0.0;
+	for (int i = 0; i < (N / tileWidth); i++) {
+		t_A[ty][tx] = A[row*N + i*tileWidth + tx];
+		t_B[ty][tx] = B[(i*tileWidth + ty)*N + col];
+		__syncthreads();
+		for (int j = 0; j < tileWidth; j++)
+			cValue += t_A[ty][j] * t_B[j][tx];
+		__syncthreads();
+	}
+	C[row*N + col] = cValue;
 }
 
 void initialData(float* matrix, const int size){
@@ -188,7 +195,16 @@ void GPUtest(float* C_A, float* C_B, float* CPUResult, const int tileSize, const
 	dim3 grid(N/tileSize, N/tileSize, 1);
 
 	cudaEventRecord(gStart);
-	TiledMatrixMulGPU <<<grid, block>>> (G_A, G_B, G_C, N, tileSize); 
+	if (tileSize == 2)
+		TiledMatrixMulGPU2 <<<grid, block>>> (G_A, G_B, G_C, N, tileSize);
+	else if (tileSize == 4)
+		TiledMatrixMulGPU4 <<<grid, block>>> (G_A, G_B, G_C, N, tileSize);
+	else if (tileSize == 10)
+		TiledMatrixMulGPU10 <<<grid, block>>> (G_A, G_B, G_C, N, tileSize);
+	else if (tileSize == 20)
+		TiledMatrixMulGPU20 <<<grid, block>>> (G_A, G_B, G_C, N, tileSize);
+	else if (tileSize == 25)
+		TiledMatrixMulGPU25 <<<grid, block>>> (G_A, G_B, G_C, N, tileSize);
 	cudaEventRecord(gEnd);
 	
 	cudaEventSynchronize(gEnd);
@@ -207,8 +223,7 @@ void GPUtest(float* C_A, float* C_B, float* CPUResult, const int tileSize, const
 	fp=fopen("machineProblem4.csv","a");
 	printf("The GPU took %f to perform the computation with tile size %d.\n", timeDuration, tileSize);
 	fprintf(fp,"%d,%d,%f\n",N,tileSize,timeDuration);
-	fclose(fp);	
-
+	fclose(fp);
 }
 
 void computeMatrix(const int N) {
