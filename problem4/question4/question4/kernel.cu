@@ -218,8 +218,8 @@ void GPUtest(float* C_A, float* C_B, float* CPUResult, const int tileSize, const
 	cudaFree(G_B);
 	cudaFree(G_C);
 	free(GPUResult);
-	
 	FILE *fp;
+	
 	fp=fopen("machineProblem4.csv","a");
 	printf("The GPU took %f to perform the computation with tile size %d.\n", timeDuration, tileSize);
 	fprintf(fp,"%d,%d,%f\n",N,tileSize,timeDuration);
