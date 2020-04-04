@@ -210,7 +210,6 @@ void GPUtest(float* C_A, float* C_B, float* CPUResult, const int tileSize, const
 	cudaEventSynchronize(gEnd);
 	cudaEventElapsedTime(&timeDuration, gStart, gEnd);
 	cudaMemcpy(GPUResult, G_C, size, cudaMemcpyDeviceToHost);
-	//printArr(GPUResult, N*N);
 	printf("The GPU took %f to perform the computation with tile size %d.\n", timeDuration, tileSize);
 	checkResult(CPUResult, GPUResult, N*N);
 	
@@ -246,10 +245,6 @@ void computeMatrix(const int N) {
 
 	// Serial Test CPU
 	MatrixMulCPU(C_A, C_B, C_C, N);
-
-	/*printArr(C_A, N*N);
-	printArr(C_B, N*N);
-	printArr(C_C, N*N);*/
 	
 	// Test Complete parallel Computation
 	int tileSizes [] = {2, 4, 10, 20, 25};
@@ -269,7 +264,7 @@ void computeMatrix(const int N) {
 #define BONUSTILE_C 8
 #define BONUSTILE_R 14
 
-__global__ void TiledMatrixMulGPUBonus1(float* A, float* B, float* C, const int M, const int N, const int K) {
+__global__ void TiledMatrixMulGPUBonus(float* A, float* B, float* C, const int M, const int N, const int K) {
 	float cValue = 0.0;
 	unsigned int bx = blockIdx.x;
 	unsigned int by = blockIdx.y;
@@ -382,17 +377,15 @@ int main(){
 	fclose(fp);
 	int matrixWidths [] = {100, 200, 500, 1000, 1500, 5000};
 	
-	for (int i = 0; i < 1; i++)
+	/*for (int i = 0; i < 6; i++)
 		computeMatrix(matrixWidths[i]);
 
-	printf("------------------------------------------------------------------------\n\n");
+	printf("------------------------------------------------------------------------\n");*/
     
 	printf("BONUS\n");
 	
 	computeMatrixBonus(2, 3, 4);
 	computeMatrixBonus(250, 300, 450);
-
 	printf("------------------------------------------------------------------------\n\n");
-	
 	return 0;
 }
