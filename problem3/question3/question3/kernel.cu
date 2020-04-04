@@ -168,16 +168,75 @@ void computeMatrix(const int N) {
 	cudaDeviceReset();
 }
 
-int main(){
+void transferTimes(const int N) {
+	printf("------------------------------------------------------------------------\n\n");
+	printf("Currently transfering between %dx%d matrixs\n", N, N);
 	FILE *fp;
-	fp=fopen("machineProblem3.csv","w");
-	fprintf(fp,"matrixSize,processor,blockSize,time\n");
+	fp = fopen("machineProblem3_transfer.csv", "a");
+	
+	// Initialize matrices
+	float* C_A, *C_B, *G_A, *G_B;;
+	size_t size = N * N * sizeof(float);
+	float time = 0;
+	cudaEvent_t start, end;
+
+	C_A = (float*)malloc(size);
+	C_B = (float*)malloc(size);
+	cudaMalloc((void**)&G_A, size);
+	cudaMalloc((void**)&G_B, size);
+	cudaEventCreate(&start);
+	cudaEventCreate(&end);
+
+	// Populate input matrices
+	initialData(C_A, N);
+	initialData(C_B, N);
+	
+	cudaEventRecord(start);
+	cudaEventSynchronize(start);
+	cudaMemcpy(G_A, C_A, size, cudaMemcpyHostToDevice);
+	cudaMemcpy(G_B, C_B, size, cudaMemcpyHostToDevice);
+	cudaEventRecord(end);
+	cudaEventSynchronize(end);
+	cudaEventElapsedTime(&time, start, end);
+
+	printf("Transfered %dx%d matrix from CPU to GPU in %fms\n", N, N, time);
+	fprintf(fp, "%d,0,%f\n", N, time);
+
+	cudaEventRecord(start);
+	cudaEventSynchronize(start);
+	cudaMemcpy(C_A, G_A, size, cudaMemcpyDeviceToHost);
+	cudaMemcpy(C_B, G_B, size, cudaMemcpyDeviceToHost);
+	cudaEventRecord(end);
+	cudaEventSynchronize(end);
+	cudaEventElapsedTime(&time, start, end);
+
+	cudaEventDestroy(start);
+	cudaEventDestroy(end);
+
+	printf("Transfered %dx%d matrix from GPU to CPU in %fms\n", N, N, time);
+	fprintf(fp, "%d,1,%f\n", N, time);
+
+	cudaFree(G_A);
+	cudaFree(G_B);
+	free(C_A);
+	free(C_B);
 	fclose(fp);
+}
+
+int main(){
+	FILE *fp1, *fp2;
+	fp1=fopen("machineProblem3.csv","w");
+	fp2=fopen("machineProblem3_transfer.csv","w");
+	fprintf(fp1,"matrixSize,processor,blockSize,time\n");
+	fprintf(fp2,"matrixSize,case,time\n");
+	fclose(fp1);
+	fclose(fp2);
 	int matrixWidths [] = {100, 200, 500, 1000, 1500, 5000};
 	
-	for (int i = 0; i < 6; i++)
+	for (int i = 0; i < 6; i++){
 		computeMatrix(matrixWidths[i]);
-
+		transferTimes(matrixWidths[i]);
+	}
 	printf("------------------------------------------------------------------------\n\n");
     
 	return 0;
