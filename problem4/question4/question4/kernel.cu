@@ -264,27 +264,66 @@ void computeMatrix(const int N) {
 #define BONUSTILE_C 8
 #define BONUSTILE_R 14
 
-__global__ void TiledMatrixMulGPUBonus(float* A, float* B, float* C, const int M, const int N, const int K) {
-	float cValue = 0.0;
+__global__ void TiledMatrixMulGPUBonus1(float* A, float* B, float* C, int M, int N, int K) {
+	int Brows = N;
+	int Crows = M;
+	int Ccols = K;
+	float cValue = 0;
 	unsigned int bx = blockIdx.x;
 	unsigned int by = blockIdx.y;
 	unsigned int tx = threadIdx.x;
 	unsigned int ty = threadIdx.y;
-	int row = bx * BONUSTILE_R + ty;
-	int col = by * BONUSTILE_C + tx;
+	int row = by*BONUSTILE_R + ty;
+	int col = bx*BONUSTILE_C + tx;
 
 	__shared__ float t_A[BONUSTILE_R][BONUSTILE_C];
 	__shared__ float t_B[BONUSTILE_R][BONUSTILE_C];
 
 	for (int i = 0; i < (BONUSTILE_C + N - 1) / 2; i++) {
 
-		if (i * BONUSTILE_C + tx < N && row < M)
-			t_A[ty][tx] = A[row * N + i * BONUSTILE_C + tx];
+		if (i*BONUSTILE_C + tx < N && row < M)
+			t_A[ty][tx] = A[row*N + i*BONUSTILE_C + tx];
 		else
 			t_A[ty][tx] = 0.0;
 
-		if (i * BONUSTILE_C + ty < N && col < K)
-			t_B[ty][tx] = B[(i * BONUSTILE_C + ty)*K + col];
+		if (i*BONUSTILE_C + ty < Brows && col < K)
+			t_B[ty][tx] = B[(i*BONUSTILE_C + ty)*K + col];
+		else
+			t_B[ty][tx] = 0.0;
+
+		__syncthreads();
+
+		for (int j = 0; j < BONUSTILE_C; j++)
+			cValue += t_A[ty][j] * t_B[j][tx];
+
+		__syncthreads();
+	}
+
+	if (row < Crows && col < Ccols)
+		C[((by * blockDim.y + ty)*Ccols) + (bx * blockDim.x) + tx] = cValue;
+}
+
+__global__ void TiledMatrixMulGPUBonus(float* A, float* B, float* C, int M, int N, int K) {
+	float cValue = 0;
+	unsigned int bx = blockIdx.x;
+	unsigned int by = blockIdx.y;
+	unsigned int tx = threadIdx.x;
+	unsigned int ty = threadIdx.y;
+	int row = by*BONUSTILE_R + ty;
+	int col = bx*BONUSTILE_C + tx;
+
+	__shared__ float t_A[BONUSTILE_R][BONUSTILE_C];
+	__shared__ float t_B[BONUSTILE_R][BONUSTILE_C];
+
+	for (int i = 0; i < (BONUSTILE_C + N - 1) / 2; i++) {
+
+		if (i*BONUSTILE_C + tx < N && row < M)
+			t_A[ty][tx] = A[row*N + i*BONUSTILE_C + tx];
+		else
+			t_A[ty][tx] = 0.0;
+
+		if (i*BONUSTILE_C + ty < N && col < K)
+			t_B[ty][tx] = B[(i*BONUSTILE_C + ty)*K + col];
 		else
 			t_B[ty][tx] = 0.0;
 
@@ -297,7 +336,7 @@ __global__ void TiledMatrixMulGPUBonus(float* A, float* B, float* C, const int M
 	}
 
 	if (row < M && col < K)
-		C[(row*K) + col] = cValue;
+		C[((by * blockDim.y + ty)*K) + (bx * blockDim.x) + tx] = cValue;
 }
 
 void MatrixMulCPUBonus(float* A, float* B, float* C, const int M, const int N, const int K) {
@@ -377,10 +416,10 @@ int main(){
 	fclose(fp);
 	int matrixWidths [] = {100, 200, 500, 1000, 1500, 5000};
 	
-	/*for (int i = 0; i < 6; i++)
+	for (int i = 0; i < 6; i++)
 		computeMatrix(matrixWidths[i]);
 
-	printf("------------------------------------------------------------------------\n");*/
+	printf("------------------------------------------------------------------------\n");
     
 	printf("BONUS\n");
 	
